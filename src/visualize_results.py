@@ -117,7 +117,15 @@ def get_mdd(df: pd.DataFrame) -> pd.Series:
 
 # --- Step 1: representative path subset for Power BI fan chart ---
 path_subset = get_path_subset(df, args.n_paths, args.random_state)
-path_subset.to_csv('data/simulation_paths.csv')
+path_subset = path_subset.reset_index(names='simulation_id')
+
+long_paths = pd.melt(
+    path_subset,
+    id_vars=['simulation_id'],
+    var_name='period',
+    value_name='portfolio_value'
+)
+long_paths.to_csv('data/simulation_paths.csv')
 
 # --- Step 2: summary risk statistics ---
 var, cvar = get_var_cvar(df, args.conf_level)
