@@ -34,6 +34,7 @@ Output:
 import numpy as np
 import pandas as pd
 import argparse
+import math
 
 # --- Parse command-line arguments ---
 parser = argparse.ArgumentParser(
@@ -53,27 +54,36 @@ parser.add_argument('--weights', type=float, nargs='+', required=True,
 args = parser.parse_args()
 
 cov_matrix = pd.read_csv(args.cov_matrix_path, index_col=0).values
-means = pd.read_csv(args.stats_path)['mean_return'].values
+stats_df = pd.read_csv(args.stats_path)
+means = stats_df['mean_return'].values
 n_simulations = args.n_simulations
 n_period = args.n_periods
 n_assets = pd.read_csv(args.cov_matrix_path, index_col=0).shape[0]
 starting_portfolio_value = args.starting_value
 weights = args.weights
+rng = np.random.default_rng()
 
 all_simulations = []
 
 lower_triangle_matrix = np.linalg.cholesky(cov_matrix)
 
-def generate_random_vector():
-    rng = np.random.default_rng()
-    return rng.standard_normal(size = n_assets)
+def generate_random_vector(stats_df, rng):
+    vector = np.array([])
+
+    for i in range(stats_df.shape[0]):
+        d_o_f = stats_df.iloc[i]['degree_of_freedom']
+        el = rng.standard_t(df = d_o_f, size = 1)
+        scaled_el = el / math.sqrt(d_o_f/(d_o_f - 2))
+        vector = np.append(vector, scaled_el)
+
+    return vector
 
 for i in range(n_simulations):
     value = starting_portfolio_value
     value_path = [value]
 
     for j in range(n_period):
-        z = generate_random_vector()
+        z = generate_random_vector(stats_df, rng)
         period_asset_returns = (lower_triangle_matrix @ z) + means
 
         portfolio_return = weights @ period_asset_returns

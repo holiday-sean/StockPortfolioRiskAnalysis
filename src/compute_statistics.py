@@ -23,6 +23,7 @@ import argparse
 import datetime as dt
 import pandas as pd
 import numpy as np
+import scipy
 
 # --- Parse command-line arguments ---
 parser = argparse.ArgumentParser(
@@ -37,9 +38,20 @@ args = parser.parse_args()
 
 df = pd.read_csv(args.filepath, index_col='Date')
 
+def get_degree_of_freedom(df):
+    df_list = []
+    for i in range(df.shape[1]):
+        ticker_col = df.iloc[:, i]
+        df_list.append(scipy.stats.t.fit(ticker_col.values)[0])
+
+    df_list = pd.Series(df_list, index = df.columns)
+
+    return df_list
+
 stats = pd.DataFrame({
     "mean_return": df.mean(),
-    "variance": df.var()
+    "variance": df.var(), 
+    "degree_of_freedom": get_degree_of_freedom(df)
 })
 
 cov = df.cov()
