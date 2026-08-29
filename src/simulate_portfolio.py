@@ -30,7 +30,6 @@ Output:
 
 """
 
-
 import numpy as np
 import pandas as pd
 import argparse
@@ -63,7 +62,7 @@ starting_portfolio_value = args.starting_value
 weights = args.weights
 rng = np.random.default_rng()
 
-all_simulations = []
+simulations = []
 
 lower_triangle_matrix = np.linalg.cholesky(cov_matrix)
 
@@ -76,22 +75,35 @@ def generate_random_vector(stats_df, rng):
         scaled_el = el / math.sqrt(d_o_f/(d_o_f - 2))
         vector = np.append(vector, scaled_el)
 
-    return vector
+    antithetic_vector = -vector 
 
-for i in range(n_simulations):
+    return vector, antithetic_vector
+
+for i in range(math.ceil(n_simulations / 2)):
     value = starting_portfolio_value
+    anti_value = starting_portfolio_value
+
     value_path = [value]
+    anti_value_path = [anti_value]
 
     for j in range(n_period):
-        z = generate_random_vector(stats_df, rng)
+        z, anti_z = generate_random_vector(stats_df, rng)
+
         period_asset_returns = (lower_triangle_matrix @ z) + means
+        anti_period_asset_returns = (lower_triangle_matrix @ anti_z) + means
 
         portfolio_return = weights @ period_asset_returns
+        anti_portfolio_return = weights @ anti_period_asset_returns
+
         value *= (1 + portfolio_return)
+        anti_value *= (1 + anti_portfolio_return)
+
         value_path.append(value)
+        anti_value_path.append(anti_value)
 
-    all_simulations.append(value_path)
+    simulations.append(value_path)
+    simulations.append(anti_value_path)
 
-results = pd.DataFrame(all_simulations)
+results = pd.DataFrame(simulations)
 
 results.to_csv('data/simulations.csv')
