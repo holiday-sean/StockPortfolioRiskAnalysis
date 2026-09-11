@@ -19,37 +19,41 @@ import argparse
 import numpy as np
 import pandas as pd
 
-# --- Parse command-line arguments ---
-parser = argparse.ArgumentParser(
-    description="Compute risk summary statistics and a representative path subset from simulation results."
-)
-parser.add_argument(
-    'filepath',
-    type=str,
-    help='Path to simulations.csv (rows=trial_id, columns=period)'
-)
-parser.add_argument(
-    '--conf_level',
-    type=float,
-    default=0.95,
-    help='Confidence level for VaR/CVaR, e.g. 0.95 for 95%% confidence (default: 0.95)'
-)
-parser.add_argument(
-    '--n_paths',
-    type=int,
-    default=500,
-    help='Number of representative trial paths to export for Power BI (default: 500)'
-)
-parser.add_argument(
-    '--random_state',
-    type=int,
-    default=42,
-    help='Random seed for reproducible path sampling (default: 42)'
-)
-args = parser.parse_args()
 
-df = pd.read_csv(args.filepath, index_col=0)
+def get_var_cvar(df: pd.DataFrame, conf_level: float) -> tuple[float, float]:
+    """
+    Computes Value at Risk and Conditional Value at Risk on log returns
+    (ending value vs. starting value) across all trials.
 
+    conf_level=0.95 means a 5% one-sided tail (95% of outcomes are better
+    than VaR); the entire excluded tail sits on the loss side.
+    """
+    first_day = df.iloc[:, 0]
+    last_day = df.iloc[:, -1]
+
+    input_dist = np.log(last_day / first_day)
+    var = np.percentile(input_dist, (1 - conf_level) * 100)
+    cvar = input_dist[input_dist < var].mean()
+
+    return var, cvar
+
+def get_prob_of_loss(df: pd.DataFrame) -> float:
+    """Fraction of trials ending below their starting value."""
+    first_day = df.iloc[:, 0]
+    last_day = df.iloc[:, -1]
+
+    return (last_day < first_day).mean()
+
+def get_mdd(df: pd.DataFrame) -> pd.Series:
+    """
+    Max drawdown per trial: worst peak-to-trough decline along each path,
+    using a running peak (not a fixed global peak or adjacent-period diff).
+    """
+    peak = df.cummax(axis=1)
+    drawdown = (df - peak) / peak
+    max_drawdown = drawdown.min(axis=1)
+
+    return max_drawdown
 
 def get_path_subset(df: pd.DataFrame, n_paths: int, random_state: int) -> pd.DataFrame:
     """
@@ -76,70 +80,69 @@ def get_path_subset(df: pd.DataFrame, n_paths: int, random_state: int) -> pd.Dat
 
     return subset
 
-
-def get_var_cvar(df: pd.DataFrame, conf_level: float) -> tuple[float, float]:
+def visualize_results(filepath, conf_level, n_paths, random_state):
     """
-    Computes Value at Risk and Conditional Value at Risk on log returns
-    (ending value vs. starting value) across all trials.
-
-    conf_level=0.95 means a 5% one-sided tail (95% of outcomes are better
-    than VaR); the entire excluded tail sits on the loss side.
     """
-    first_day = df.iloc[:, 0]
-    last_day = df.iloc[:, -1]
+    df = pd.read_csv(filepath, index_col=0)
 
-    input_dist = np.log(last_day / first_day)
-    var = np.percentile(input_dist, (1 - conf_level) * 100)
-    cvar = input_dist[input_dist < var].mean()
+    # --- Step 1: representative path subset for Power BI fan chart ---
+    path_subset = get_path_subset(df, n_paths, random_state)
+    path_subset = path_subset.reset_index(names='simulation_id')
 
-    return var, cvar
+    long_paths = pd.melt(
+        path_subset,
+        id_vars=['simulation_id'],
+        var_name='period',
+        value_name='portfolio_value'
+    )
+    long_paths.to_csv('data/simulation_paths.csv')
 
+    # --- Step 2: summary risk statistics ---
+    var, cvar = get_var_cvar(df, conf_level)
+    prob_of_loss = get_prob_of_loss(df)
+    mdd_per_trial = get_mdd(df)
 
-def get_prob_of_loss(df: pd.DataFrame) -> float:
-    """Fraction of trials ending below their starting value."""
-    first_day = df.iloc[:, 0]
-    last_day = df.iloc[:, -1]
+    results = pd.DataFrame({
+        'conf_level': [conf_level],
+        'VaR': [var],
+        'CVaR': [cvar],
+        'prob_of_loss': [prob_of_loss],
+        'MDD_mean': [mdd_per_trial.mean()],
+        'MDD_median': [mdd_per_trial.median()],
+        'MDD_p5_worst_case': [mdd_per_trial.quantile(0.05)],
+    })
 
-    return (last_day < first_day).mean()
+    return results
 
+if __name__ == '__main__':
+    # --- Parse command-line arguments ---
+    parser = argparse.ArgumentParser(
+        description="Compute risk summary statistics and a representative path subset from simulation results."
+    )
+    parser.add_argument(
+        'filepath',
+        type=str,
+        help='Path to simulations.csv (rows=trial_id, columns=period)'
+    )
+    parser.add_argument(
+        '--conf_level',
+        type=float,
+        default=0.95,
+        help='Confidence level for VaR/CVaR, e.g. 0.95 for 95%% confidence (default: 0.95)'
+    )
+    parser.add_argument(
+        '--n_paths',
+        type=int,
+        default=500,
+        help='Number of representative trial paths to export for Power BI (default: 500)'
+    )
+    parser.add_argument(
+        '--random_state',
+        type=int,
+        default=42,
+        help='Random seed for reproducible path sampling (default: 42)'
+    )
+    args = parser.parse_args()
 
-def get_mdd(df: pd.DataFrame) -> pd.Series:
-    """
-    Max drawdown per trial: worst peak-to-trough decline along each path,
-    using a running peak (not a fixed global peak or adjacent-period diff).
-    """
-    peak = df.cummax(axis=1)
-    drawdown = (df - peak) / peak
-    max_drawdown = drawdown.min(axis=1)
-
-    return max_drawdown
-
-
-# --- Step 1: representative path subset for Power BI fan chart ---
-path_subset = get_path_subset(df, args.n_paths, args.random_state)
-path_subset = path_subset.reset_index(names='simulation_id')
-
-long_paths = pd.melt(
-    path_subset,
-    id_vars=['simulation_id'],
-    var_name='period',
-    value_name='portfolio_value'
-)
-long_paths.to_csv('data/simulation_paths.csv')
-
-# --- Step 2: summary risk statistics ---
-var, cvar = get_var_cvar(df, args.conf_level)
-prob_of_loss = get_prob_of_loss(df)
-mdd_per_trial = get_mdd(df)
-
-results = pd.DataFrame({
-    'conf_level': [args.conf_level],
-    'VaR': [var],
-    'CVaR': [cvar],
-    'prob_of_loss': [prob_of_loss],
-    'MDD_mean': [mdd_per_trial.mean()],
-    'MDD_median': [mdd_per_trial.median()],
-    'MDD_p5_worst_case': [mdd_per_trial.quantile(0.05)],
-})
-
-results.to_csv('data/simulation_summary.csv', index=False)
+    results = visualize_results(args.filepath, args.conf_level, args.n_paths, args.random_state)
+    results.to_csv('data/simulation_summary.csv', index=False)

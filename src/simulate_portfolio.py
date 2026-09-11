@@ -35,37 +35,6 @@ import pandas as pd
 import argparse
 import math
 
-# --- Parse command-line arguments ---
-parser = argparse.ArgumentParser(
-    description="Inputting the corresponding parameters for the monte carlo algo"
-)
-
-parser.add_argument('cov_matrix_path', type=str)
-parser.add_argument('stats_path', type=str)
-parser.add_argument('--n-simulations', type=int, default=1000,
-                     help='Number of Monte Carlo trials (default: 1000)')
-parser.add_argument('--n-periods', type=int, default=365,
-                     help='Number of periods to simulate (default: 365)')
-parser.add_argument('--starting-value', type=float, default=10000)
-parser.add_argument('--weights', type=float, nargs='+', required=True,
-                     help='Portfolio weights per asset, e.g. --weights 0.6 0.4')
-
-args = parser.parse_args()
-
-cov_matrix = pd.read_csv(args.cov_matrix_path, index_col=0).values
-stats_df = pd.read_csv(args.stats_path)
-means = stats_df['mean_return'].values
-n_simulations = args.n_simulations
-n_period = args.n_periods
-n_assets = pd.read_csv(args.cov_matrix_path, index_col=0).shape[0]
-starting_portfolio_value = args.starting_value
-weights = args.weights
-rng = np.random.default_rng()
-
-simulations = []
-
-lower_triangle_matrix = np.linalg.cholesky(cov_matrix)
-
 def generate_random_vector(stats_df, rng):
     vector = np.array([])
 
@@ -79,31 +48,65 @@ def generate_random_vector(stats_df, rng):
 
     return vector, antithetic_vector
 
-for i in range(math.ceil(n_simulations / 2)):
-    value = starting_portfolio_value
-    anti_value = starting_portfolio_value
+def run_simulation(cov_matrix, means, stats_df, weights, n_simulations, n_period, starting_portfolio_value):
+    simulations = []
+    lower_triangle_matrix = np.linalg.cholesky(cov_matrix)
+    rng = np.random.default_rng()  # per your earlier fix — one rng, outside the loop
 
-    value_path = [value]
-    anti_value_path = [anti_value]
+    for i in range(math.ceil(n_simulations / 2)):
+        value = starting_portfolio_value
+        anti_value = starting_portfolio_value
 
-    for j in range(n_period):
-        z, anti_z = generate_random_vector(stats_df, rng)
+        value_path = [value]
+        anti_value_path = [anti_value]
 
-        period_asset_returns = (lower_triangle_matrix @ z) + means
-        anti_period_asset_returns = (lower_triangle_matrix @ anti_z) + means
+        for j in range(n_period):
+            z, anti_z = generate_random_vector(stats_df, rng)
 
-        portfolio_return = weights @ period_asset_returns
-        anti_portfolio_return = weights @ anti_period_asset_returns
+            period_asset_returns = (lower_triangle_matrix @ z) + means
+            anti_period_asset_returns = (lower_triangle_matrix @ anti_z) + means
 
-        value *= (1 + portfolio_return)
-        anti_value *= (1 + anti_portfolio_return)
+            portfolio_return = weights @ period_asset_returns
+            anti_portfolio_return = weights @ anti_period_asset_returns
 
-        value_path.append(value)
-        anti_value_path.append(anti_value)
+            value *= (1 + portfolio_return)
+            anti_value *= (1 + anti_portfolio_return)
 
-    simulations.append(value_path)
-    simulations.append(anti_value_path)
+            value_path.append(value)
+            anti_value_path.append(anti_value)
 
-results = pd.DataFrame(simulations)
+        simulations.append(value_path)
+        simulations.append(anti_value_path)
 
-results.to_csv('data/simulations.csv')
+    return pd.DataFrame(simulations)
+
+if __name__ == '__main__':
+    # --- Parse command-line arguments ---
+    parser = argparse.ArgumentParser(
+        description="Inputting the corresponding parameters for the monte carlo algo"
+    )
+
+    parser.add_argument('cov_matrix_path', type=str)
+    parser.add_argument('stats_path', type=str)
+    parser.add_argument('--n-simulations', type=int, default=1000,
+                        help='Number of Monte Carlo trials (default: 1000)')
+    parser.add_argument('--n-periods', type=int, default=365,
+                        help='Number of periods to simulate (default: 365)')
+    parser.add_argument('--starting-value', type=float, default=10000)
+    parser.add_argument('--weights', type=float, nargs='+', required=True,
+                        help='Portfolio weights per asset, e.g. --weights 0.6 0.4')
+
+    args = parser.parse_args()
+
+    cov_matrix = pd.read_csv(args.cov_matrix_path, index_col=0).values
+    stats_df = pd.read_csv(args.stats_path)
+    means = stats_df['mean_return'].values
+    n_simulations = args.n_simulations
+    n_period = args.n_periods
+    n_assets = pd.read_csv(args.cov_matrix_path, index_col=0).shape[0]
+    starting_portfolio_value = args.starting_value
+    weights = args.weights
+    rng = np.random.default_rng()
+
+    results = run_simulation(cov_matrix, means, stats_df, weights, n_simulations, n_period, starting_portfolio_value)
+    results.to_csv('data/simulations.csv')
