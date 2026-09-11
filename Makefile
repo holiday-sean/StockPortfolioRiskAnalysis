@@ -1,4 +1,4 @@
-all: data/simulation_paths.csv
+all: data/simulation_paths.csv data/convergence.csv
 
 .PHONY: all clean
 
@@ -19,6 +19,9 @@ data/simulations.csv: src/simulate_portfolio.py data/stats.csv data/covariance_m
 
 data/simulation_paths.csv data/simulation_summary.csv &: src/visualize_results.py data/simulations.csv
 	python src/visualize_results.py 'data/simulations.csv' 
+
+data/convergence.csv: src/analyze_convergence.py data/covariance_matrix.csv data/stats.csv
+	python src/analyze_convergence.py 'data/covariance_matrix.csv' 'data/stats.csv' --weights 0.6 0.4
 
 clean:
 	-rm -f data/*.csv
