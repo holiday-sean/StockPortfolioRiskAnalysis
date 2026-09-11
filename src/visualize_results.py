@@ -31,8 +31,8 @@ def get_var_cvar(df: pd.DataFrame, conf_level: float) -> tuple[float, float]:
     first_day = df.iloc[:, 0]
     last_day = df.iloc[:, -1]
 
-    input_dist = np.log(last_day / first_day)
-    var = np.percentile(input_dist, (1 - conf_level) * 100)
+    input_dist = (last_day / first_day) - 1
+    var = np.nanpercentile(input_dist, (1 - conf_level) * 100)
     cvar = input_dist[input_dist < var].mean()
 
     return var, cvar

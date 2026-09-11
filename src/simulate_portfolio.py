@@ -69,6 +69,9 @@ def run_simulation(cov_matrix, means, stats_df, weights, n_simulations, n_period
             portfolio_return = weights @ period_asset_returns
             anti_portfolio_return = weights @ anti_period_asset_returns
 
+            portfolio_return = max(portfolio_return, -1.0)
+            anti_portfolio_return = max(anti_portfolio_return, -1.0)
+
             value *= (1 + portfolio_return)
             anti_value *= (1 + anti_portfolio_return)
 
