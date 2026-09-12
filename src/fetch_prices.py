@@ -28,15 +28,13 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     'filepath',
     type=str,
-    help='Path to a text file containing whitespace-separated stock tickers (e.g. tickers.txt)'
+    help='Path to a csv file containing stock tickers (e.g. tickers.csv)'
 )
 args = parser.parse_args()
 
-# --- Read and normalize the ticker list ---
-# Splitting the input file on whitespace and rejoining with single spaces produces the
-# space-separated ticker string yfinance expects (e.g. "AAPL AMZN VTI").
-with open(args.filepath, 'r') as file:
-    content = " ".join(file.read().split())
+df = pd.read_csv(args.filepath, index_col='tickers')
+tickers_ls = df.index.values
+content = " ".join(tickers_ls)
 
 # --- Fetch price data from Yahoo Finance ---
 # yf.Tickers() is used here to validate/register the ticker symbols.
