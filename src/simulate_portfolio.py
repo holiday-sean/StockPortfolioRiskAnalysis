@@ -22,7 +22,7 @@ Input:
     Your portfolio starting value (a float number)
 
     The weights - the proportion of your starting value that is allocated to
-    each stocks. Inputed as a list. 
+    each stocks. Inputed as a path to weights.csv. 
 
 Output:
     data/simulations.csv — a CSV representing the distribution of a portfolio
@@ -96,19 +96,20 @@ if __name__ == '__main__':
     parser.add_argument('--n-periods', type=int, default=365,
                         help='Number of periods to simulate (default: 365)')
     parser.add_argument('--starting-value', type=float, default=10000)
-    parser.add_argument('--weights', type=float, nargs='+', required=True,
-                        help='Portfolio weights per asset, e.g. --weights 0.6 0.4')
+    parser.add_argument('--weights-path', type=str, required=True,
+                        help='Path to CSV with columns: tickers, freq_distribution')
 
     args = parser.parse_args()
 
-    cov_matrix = pd.read_csv(args.cov_matrix_path, index_col=0).values
+    cov_matrix = pd.read_csv(args.cov_matrix_path, index_col=0)
+    weights_df = pd.read_csv(args.weights_path, index_col='tickers')
+    weights = weights_df.loc[cov_matrix.index, 'freq_distribution'].values
     stats_df = pd.read_csv(args.stats_path)
     means = stats_df['mean_return'].values
     n_simulations = args.n_simulations
     n_period = args.n_periods
     n_assets = pd.read_csv(args.cov_matrix_path, index_col=0).shape[0]
     starting_portfolio_value = args.starting_value
-    weights = args.weights
     rng = np.random.default_rng()
 
     results = run_simulation(cov_matrix, means, stats_df, weights, n_simulations, n_period, starting_portfolio_value)

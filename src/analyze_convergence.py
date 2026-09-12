@@ -6,7 +6,7 @@ values to check whether key risk metrics have stabilized, or are still
 noisy due to too few trials.
 
 Usage:
-    python src/analyze_convergence.py <path_to_covariance_matrix> <path_to_stats_csv> --weights 0.6 0.4
+    python src/analyze_convergence.py <path_to_covariance_matrix> <path_to_stats_csv> --weights_path <path_to_weights_csv>
 
 Input:
     The same covariance matrix and stats CSVs used by simulate_portfolio.py.
@@ -69,16 +69,16 @@ if __name__ == '__main__':
     )
     parser.add_argument('cov_matrix_path', type=str)
     parser.add_argument('stats_path', type=str)
-    parser.add_argument('--weights', type=float, nargs='+', required=True,
-                         help='Portfolio weights per asset, e.g. --weights 0.6 0.4')
+    parser.add_argument('--weights-path', type=str, required=True,
+                        help='Path to CSV with columns: tickers, freq_distribution')
     parser.add_argument('--n-simulations-list', type=int, nargs='+',
-                         default=[100, 500, 1000, 5000, 10000],
-                         help='n_simulations values to sweep (default: 100 500 1000 5000 10000)')
+                        default=[100, 500, 1000, 5000, 10000],
+                        help='n_simulations values to sweep (default: 100 500 1000 5000 10000)')
     parser.add_argument('--n-periods', type=int, default=365,
-                         help='Number of periods to simulate (default: 365)')
+                        help='Number of periods to simulate (default: 365)')
     parser.add_argument('--starting-value', type=float, default=10000)
     parser.add_argument('--conf_level', type=float, default=0.95,
-                         help='Confidence level for VaR/CVaR (default: 0.95)')
+                        help='Confidence level for VaR/CVaR (default: 0.95)')
 
     args = parser.parse_args()
 
@@ -86,8 +86,12 @@ if __name__ == '__main__':
     stats_df = pd.read_csv(args.stats_path)
     means = stats_df['mean_return'].values
 
+    cov_df = pd.read_csv(args.cov_matrix_path, index_col=0)
+    weights_df = pd.read_csv(args.weights_path, index_col='tickers')
+    weights = weights_df.loc[cov_df.index, 'freq_distribution'].values
+
     results = run_convergence_analysis(
-        cov_matrix, means, stats_df, args.weights,
+        cov_matrix, means, stats_df, weights,
         args.n_simulations_list, args.n_periods,
         args.starting_value, args.conf_level
     )
