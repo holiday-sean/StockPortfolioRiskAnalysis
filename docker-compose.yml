@@ -1,0 +1,8 @@
+version: '3.8'
+
+services:
+  portfolio_risk_analysis:
+    build: .
+    volumes:
+      # Maps your local repo's "data" folder directly to the container
+      - ./data:/app/data
