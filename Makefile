@@ -20,7 +20,7 @@ data/stats.csv data/covariance_matrix.csv &: src/compute_statistics.py data/retu
 data/simulations.csv: src/simulate_portfolio.py data/stats.csv data/covariance_matrix.csv data/weights.csv
 	python src/simulate_portfolio.py 'data/covariance_matrix.csv' 'data/stats.csv' --weights-path 'data/weights.csv'
 
-data/simulation_paths.csv data/simulation_summary.csv &: src/visualize_results.py data/simulations.csv
+data/simulation_paths.csv data/simulation_summary.csv data/mdd_distribution.csv &: src/visualize_results.py data/simulations.csv
 	python src/visualize_results.py 'data/simulations.csv' 
 
 data/convergence.csv: src/analyze_convergence.py data/covariance_matrix.csv data/stats.csv
