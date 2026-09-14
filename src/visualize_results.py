@@ -112,6 +112,10 @@ def visualize_results(filepath, conf_level, n_paths, random_state):
         'MDD_p5_worst_case': [mdd_per_trial.quantile(0.05)],
     })
 
+
+    #--- Step 3: Export max drawdown distribution (from full dataset) for Power BI ---
+    mdd_per_trial.to_csv('data/mdd_distribution.csv', index_label='simulation_id', header=['max_drawdown'])
+
     return results
 
 if __name__ == '__main__':
