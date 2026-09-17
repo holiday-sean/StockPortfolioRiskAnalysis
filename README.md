@@ -171,7 +171,9 @@ conda activate portfolio-analysis
 
 If you're using Docker, you don't need to do this — the image installs the same pinned versions via `pip` automatically.
 
-**Power BI dashboard:** the covariance heatmap is rendered as a Python visual inside Power BI Desktop, which relies on Power BI's own separately-configured Python environment (Power BI Options → Python scripting), not the conda environment above. That environment needs `pandas`, `numpy`, `matplotlib`, and `seaborn` available.
+**Power BI dashboard:** the correlation heatmap (derived from the covariance matrix) is rendered as a Python visual inside Power BI Desktop, which relies on Power BI's own separately-configured Python environment (Power BI Options → Python scripting), not the conda environment above. That environment needs `pandas`, `numpy`, `matplotlib`, and `seaborn` available.
+
+![Example of Dashboard](docs/portfolio_dashboard.png)
 
 **Orchestration:**
 - `make` — installed via `apt-get` inside the Docker image; not required on the host if you're using Docker Compose

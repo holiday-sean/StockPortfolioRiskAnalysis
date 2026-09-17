@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
     risk_contribution = pd.DataFrame({
         'asset': weights.index,
-        'contribution_percent': contribution.iloc[:, 0].values * 100
+        'contribution_percent': contribution.iloc[:, 0].values
     })
 
     risk_contribution.to_csv('data/risk_contribution.csv', index=False)

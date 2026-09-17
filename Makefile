@@ -1,4 +1,4 @@
-all: data/simulation_paths.csv data/convergence.csv
+all: data/simulation_paths.csv data/convergence.csv data/risk_contributions.csv
 
 .PHONY: all clean
 
