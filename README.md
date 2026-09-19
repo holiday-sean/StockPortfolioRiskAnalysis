@@ -1,13 +1,13 @@
 # Portfolio Risk Analysis
 
-### Introduction
+## Introduction
 
-#### Problem
+### Problem I
 Despite the continuous technological advances that have been made in conjunction with the finance industry, <b>there is no model</b> that has accurately captured the dynamic and unpredictable movements of the stock market. The features in order to predict the market are too multi-modal and complex in nature to capture and process. Furthermore, the trajectory of the market depends on future events that are unforseable. There is no definitive model, and there will probably never be one.
 
 To the average investor that is interested in saving long-term, if there is no perfect model, how can one safely grow their portfolio? One way to approach this issue is to <b> account for risk.</b> If an investor can quantify risk, he/she/they can optimize their portfolio that withstand loss. But how do we even quantify risk in the first place? 
 
-#### Solution (Monte Carlo Simulation)
+### Solution (Monte Carlo Simulation)
 One popular solution, to quantify risk as an objective metric, is to see all the potential portfolio values after `N` days using the <b>Monte Carlo Algorithm</b>.
 
 The [Monte Carlo Algorithm](https://en.wikipedia.org/wiki/Monte_Carlo_method) is a mathematical technique that entails utilizing random sampling to estimate the potential outcomes of an uncertain system (in this case, our portfolio value after fluctuations in the stock market).
@@ -21,10 +21,48 @@ How do we apply this technique to our portfolio? We randomly sample the movement
 - Do the previous step again many times (e.g. 1000 times) to create a distribution of potential portfolio earnings like a normal distribution or student's t-distribution
 - Present the portfolio distribution along with key risk indicators captured such as value at risk (VaR), conditional value at risk (CVaR), and maximum dropdown (MDD) in a dashboard for an investor to decide whether the risk associated with their portfolio is acceptable.
 
-### Pipeline Architecture
+Presenting these metrics in a dashboard gives an investor an objective basis for deciding whether a portfolio's risk profile fits their tolerance:
+
+![Example of Dashboard](docs/portfolio_dashboard.png)
+  
+## Comparative Portfolio Analysis
+ 
+### Problem II
+ 
+It is known that investing in a conservative portfolio of index funds (both equities and bonds) is less risky than investing in a tech-concentrated portfolio. Tech shares (e.g. AAPL, AMZN, NVDA) carry unstable prices since their valuations depend heavily on meeting future growth expectations rather than current fundamentals. By theory, Monte Carlo should predict lower risk metrics for the conservative portfolio and higher risk metrics for the tech-concentrated portfolio — but *by how much*?
+ 
+To answer this, the pipeline was run against three portfolios, each starting at $10,000, over 10,000 simulations:
+ 
+- **Conservative (60/40)** — 60% VTI, 40% BND
+- **All-Weather (Ray Dalio)** — 30% VTI, 40% TLT, 15% IEF, 7.5% GLD, 7.5% DBC
+- **Tech-Concentrated** — NVDA (12.5%), AAPL (16.7%), MSFT (12.5%), AMZN (25%), TSLA (4.16%), META (4.16%), NFLX (8.3%), GOOGL (16.6%)
+
+| Metric | Tech-Concentrated | All-Weather | Conservative |
+|---|---|---|---|
+| Mean ending value | $12,597.78 | $10,305.38 | $11,034.67 |
+| VaR (95%) | -31.5% | -16.9% | -10.7% |
+| CVaR (95%) | -40.1% | -20.8% | -15.5% |
+| Probability of loss | 30.3% | 43.2% | 23.0% |
+| MDD (mean) | -27.7% | -12.5% | -10.8% |
+| MDD (median) | -26.1% | -11.5% | -9.9% |
+| MDD (5th pct., worst case) | -46.1% | -22.3% | -19.4% |
+ 
+#### Findings
+ 
+**Portfolio value.** As expected, Tech-Concentrated produced the highest ending value ($12,597.78, a 26.0% gain). Unexpectedly, Conservative ($11,034.67) outperformed All-Weather ($10,305.38), despite All-Weather's mandate of delivering steadier, regime-resilient returns. The simulated price history spans the 2022 rate-hike cycle — one of the worst periods on record for long-duration fixed income — and All-Weather's largest position, TLT (20+ year Treasuries, ~17-year duration), is roughly 2–3x more rate-sensitive than Conservative's BND (broad, mixed-maturity bonds, ~6-year duration). Combined with a smaller equity allocation (30% vs. 60%) to capture the subsequent recovery, this explains most of the gap.
+ 
+**Portfolio risk.** VaR, CVaR, and MDD all descend in the expected order — Tech-Concentrated riskiest, Conservative safest — consistent with theory. Probability of loss breaks that pattern: All-Weather has the *highest* probability of ending below its starting value (43.2%), even higher than Tech-Concentrated's (30.3%). This is because severity and frequency of loss are different things. Tech-Concentrated's high expected return shifts its whole outcome distribution above breakeven, so most trials gain — but the minority that don't can be severe (worse CVaR/MDD). All-Weather's expected return is barely positive (3.1% over the horizon), so its distribution sits close to breakeven: losses are common but shallow. **Tech-Concentrated loses less often but loses harder; All-Weather loses more often but loses softer.**
+ 
+**Recommendation.** None of the three is a strict winner. Comparing dollar gain to the magnitude of CVaR (an informal, directional stand-in for a Sharpe ratio — no risk-free rate, uses CVaR instead of standard deviation) shows Tech-Concentrated and Conservative are similarly efficient (~0.65 and ~0.67 gain per unit of tail risk), while All-Weather lags well behind (~0.15) — not because it's the riskiest, but because it delivers neither Tech's return premium nor Conservative's efficiency in this window. This doesn't invalidate All-Weather's risk-parity thesis; it means a 5-year backtest that includes one of the worst bond bear markets on record is a poor test of a strategy built for resilience across decades and multiple regimes.
+ 
+- **Risk-averse investors** should prefer Conservative (60/40) over All-Weather here — similar efficiency to Tech-Concentrated with far less tail exposure.
+- **Risk-tolerant investors** are reasonably compensated for Tech-Concentrated's volatility — its return-per-unit-of-risk is on par with Conservative's.
+- **All-Weather** is the hardest to recommend from this simulation alone; evaluating its case fairly would need a longer backtest or forward-looking regime analysis.
+
+## Pipeline Architecture
 `Data (yfinance) → Python (Monte Carlo + Cholesky) → Risk Metrics → Power BI Dashboard`
 
-### Running the Project
+## Running the Project
 
 If you want to collect risk metrics for your own portfolio, clone the repo:
 
@@ -41,7 +79,7 @@ AAPL,10
 NVDA,5
 ```
 
-#### Docker (Recommended)
+### Docker (Recommended)
 
 Docker is the recommended path, especially on Windows, since `make` isn't natively available there — the Dockerfile installs it inside the container instead.
 
@@ -66,7 +104,7 @@ Docker is the recommended path, especially on Windows, since `make` isn't native
 4. **Start fresh:**
    On Windows (no native `make`), the equivalent of `make clean` is manually deleting everything inside `data/`, then re-running `docker-compose up --build`.
 
-#### Conda & Makefile (Linux/macOS)
+### Conda & Makefile (Linux/macOS)
 
 If you're on Linux or macOS and already have `make` installed, you can skip Docker entirely:
 
@@ -87,11 +125,11 @@ If you're on Linux or macOS and already have `make` installed, you can skip Dock
    make all
    ```
 
-#### Viewing your results
+### Viewing your results
 
 Once the pipeline finishes, `data/` will contain the simulation outputs (paths, summary risk stats, convergence sweep, etc. — see [Project Structure](#project-structure) below). Open the Power BI `.pbix` dashboard in Power BI Desktop; on first open, set the `DataFolder` parameter to the absolute path of your local `data/` folder so the dashboard points at your own results rather than needing any code changes.
 
-### Project Structure
+## Project Structure
 
 ```
 .
@@ -121,7 +159,7 @@ Once the pipeline finishes, `data/` will contain the simulation outputs (paths, 
                                 #   covariance heatmap, VaR/CVaR/MDD summary cards
 ```
 
-#### Pipeline flow
+## Pipeline flow
 
 ```
 tickers.csv
@@ -151,7 +189,7 @@ tickers.csv
               └──► compute_risk.py (+ weights.csv) ──► risk_contribution.csv
 ```
 
-### Dependencies
+## Dependencies
 
 Pipeline dependencies are pinned in `environment.yml`:
 
@@ -172,8 +210,6 @@ conda activate portfolio-analysis
 If you're using Docker, you don't need to do this — the image installs the same pinned versions via `pip` automatically.
 
 **Power BI dashboard:** the correlation heatmap (derived from the covariance matrix) is rendered as a Python visual inside Power BI Desktop, which relies on Power BI's own separately-configured Python environment (Power BI Options → Python scripting), not the conda environment above. That environment needs `pandas`, `numpy`, `matplotlib`, and `seaborn` available.
-
-![Example of Dashboard](docs/portfolio_dashboard.png)
 
 **Orchestration:**
 - `make` — installed via `apt-get` inside the Docker image; not required on the host if you're using Docker Compose
