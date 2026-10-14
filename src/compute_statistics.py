@@ -1,60 +1,46 @@
 """
 compute_statistics.py
 
-Fetches historical adjusted daily closing prices for a list of stock
-tickers from Yahoo Finance and saves them to a CSV file.
+Computes per-stock summary statistics and the covariance matrix from
+daily log returns.
 
 Usage:
-    python compute_statistics.py <path_to_returns_file>
+    python src/compute_statistics.py <path_to_returns_csv>
 
 Input:
-    A plain text file containing log returns for stocks stored in the
-    'data' folder as 'returns.csv'
+    data/returns.csv — daily log returns, one column per ticker.
 
 Output:
-    data/stats.csv — a CSV of summary statistics, one column per
-    ticker, containing....
+    data/stats.csv — per-ticker mean_return, variance, degree_of_freedom
+    (fitted Student's t).
 
-    data/covariance_matrix.csv - a CSV containing a covariance matrix of
-    all stocks for monte algorithm later on 
+    data/covariance_matrix.csv — covariance matrix of all tickers, used
+    by the Monte Carlo simulation.
 """
 
 import argparse
-import datetime as dt
 import pandas as pd
-import numpy as np
-import scipy
 
-# --- Parse command-line arguments ---
-parser = argparse.ArgumentParser(
-    description='Fetch stock log returns for a list of tickers and save to CSV.'
-)
-parser.add_argument(
-    'filepath',
-    type=str,
-    help='Path to a text file (e.g. returns.csv)'
-)
-args = parser.parse_args()
+import core
 
-df = pd.read_csv(args.filepath, index_col='Date')
 
-def get_degree_of_freedom(df):
-    df_list = []
-    for i in range(df.shape[1]):
-        ticker_col = df.iloc[:, i]
-        df_list.append(scipy.stats.t.fit(ticker_col.values)[0])
+def main():
+    parser = argparse.ArgumentParser(
+        description='Compute summary statistics and covariance from log returns.'
+    )
+    parser.add_argument(
+        'filepath',
+        type=str,
+        help='Path to a csv file of log returns (e.g. returns.csv)'
+    )
+    args = parser.parse_args()
 
-    df_list = pd.Series(df_list, index = df.columns)
+    returns = pd.read_csv(args.filepath, index_col='Date')
+    stats, cov = core.get_stats(returns)
 
-    return df_list
+    stats.to_csv('data/stats.csv')
+    cov.to_csv('data/covariance_matrix.csv')
 
-stats = pd.DataFrame({
-    "mean_return": df.mean(),
-    "variance": df.var(), 
-    "degree_of_freedom": get_degree_of_freedom(df)
-})
 
-cov = df.cov()
-
-stats.to_csv('data/stats.csv')
-cov.to_csv('data/covariance_matrix.csv')
+if __name__ == '__main__':
+    main()

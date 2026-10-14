@@ -6,10 +6,10 @@ values to check whether key risk metrics have stabilized, or are still
 noisy due to too few trials.
 
 Usage:
-    python src/analyze_convergence.py <path_to_covariance_matrix> <path_to_stats_csv> --weights_path <path_to_weights_csv>
+    python src/analyze_convergence.py <path_to_covariance_matrix> <path_to_stats_csv> --weights-path <path_to_weights_csv>
 
 Input:
-    The same covariance matrix and stats CSVs used by simulate_portfolio.py.
+    The same covariance matrix, stats and weights CSVs used by simulate_portfolio.py.
 
 Output:
     data/convergence.csv — one row per n_simulations value swept, with
@@ -21,15 +21,14 @@ Output:
 import argparse
 import pandas as pd
 
-from simulate_portfolio import run_simulation
-from visualize_results import get_var_cvar, get_prob_of_loss, get_mdd
+import core
 
 
-def run_convergence_analysis(cov_matrix, means, stats_df, weights,
-                              n_simulations_list, n_period,
-                              starting_portfolio_value, conf_level):
+def run_convergence_analysis(cov_matrix, means, dof, weights,
+                             n_simulations_list, n_periods,
+                             starting_portfolio_value, conf_level):
     """
-    Runs run_simulation() once per value in n_simulations_list, computing
+    Runs core.simulate() once per value in n_simulations_list, computing
     the same risk metrics as visualize_results.py at each size, so their
     stability (or lack of it) can be plotted against n_simulations.
 
@@ -38,14 +37,11 @@ def run_convergence_analysis(cov_matrix, means, stats_df, weights,
     rows = []
 
     for n_simulations in n_simulations_list:
-        df = run_simulation(
-            cov_matrix, means, stats_df, weights,
-            n_simulations, n_period, starting_portfolio_value
-        )
+        df = core.simulate(cov_matrix, means, dof, weights,
+                           n_simulations, n_periods, starting_portfolio_value)
 
-        var, cvar = get_var_cvar(df, conf_level)
-        prob_of_loss = get_prob_of_loss(df)
-        mdd_per_trial = get_mdd(df)
+        var, cvar = core.get_var_cvar(df, conf_level)
+        mdd_per_trial = core.get_mdd(df)
 
         rows.append({
             'n_simulations': n_simulations,
@@ -53,7 +49,7 @@ def run_convergence_analysis(cov_matrix, means, stats_df, weights,
             'mean_ending_value': df.iloc[:, -1].mean(),
             'VaR': var,
             'CVaR': cvar,
-            'prob_of_loss': prob_of_loss,
+            'prob_of_loss': core.get_prob_of_loss(df),
             'MDD_mean': mdd_per_trial.mean(),
             'MDD_median': mdd_per_trial.median(),
             'MDD_p5_worst_case': mdd_per_trial.quantile(0.05),
@@ -62,8 +58,7 @@ def run_convergence_analysis(cov_matrix, means, stats_df, weights,
     return pd.DataFrame(rows)
 
 
-if __name__ == '__main__':
-    # --- Parse command-line arguments ---
+def main():
     parser = argparse.ArgumentParser(
         description="Sweep n_simulations to check convergence of Monte Carlo risk metrics."
     )
@@ -79,21 +74,23 @@ if __name__ == '__main__':
     parser.add_argument('--starting-value', type=float, default=10000)
     parser.add_argument('--conf_level', type=float, default=0.95,
                         help='Confidence level for VaR/CVaR (default: 0.95)')
-
     args = parser.parse_args()
 
-    cov_matrix = pd.read_csv(args.cov_matrix_path, index_col=0).values
-    stats_df = pd.read_csv(args.stats_path)
-    means = stats_df['mean_return'].values
-
-    cov_df = pd.read_csv(args.cov_matrix_path, index_col=0)
-    weights_df = pd.read_csv(args.weights_path, index_col='tickers')
-    weights = weights_df.loc[cov_df.index, 'freq_distribution'].values
+    cov = pd.read_csv(args.cov_matrix_path, index_col=0)
+    stats = pd.read_csv(args.stats_path, index_col=0)
+    weights = pd.read_csv(args.weights_path, index_col='tickers')['freq_distribution']
 
     results = run_convergence_analysis(
-        cov_matrix, means, stats_df, weights,
+        cov.values,
+        stats.loc[cov.index, 'mean_return'].values,
+        stats.loc[cov.index, 'degree_of_freedom'].values,
+        weights.loc[cov.index].values,
         args.n_simulations_list, args.n_periods,
         args.starting_value, args.conf_level
     )
 
     results.to_csv('data/convergence.csv', index=False)
+
+
+if __name__ == '__main__':
+    main()

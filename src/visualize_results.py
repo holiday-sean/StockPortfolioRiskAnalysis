@@ -1,11 +1,13 @@
 """
 visualize_results.py
 
-Reads Monte Carlo simulation paths and produces two outputs for Power BI:
-a representative subset of raw paths, and a table of summary risk statistics.
+Reads Monte Carlo simulation paths and produces outputs for Power BI:
+a representative subset of raw paths, a table of summary risk statistics,
+and the per-trial max drawdown distribution. The risk metrics themselves
+live in core.py; this script handles sampling and file output.
 
 Usage:
-    python visualize_results.py <path_to_simulations_csv> [--conf_level 0.95] [--n_paths 500]
+    python src/visualize_results.py <path_to_simulations_csv> [--conf_level 0.95] [--n_paths 500]
 
 Input:
     data/simulations.csv — rows = trial_id, columns = period, values = portfolio value.
@@ -13,47 +15,14 @@ Input:
 Output:
     data/simulation_paths.csv   — a random subset of full trial paths (for fan chart viz)
     data/simulation_summary.csv — one-row table of VaR, CVaR, probability of loss, and MDD stats
+    data/mdd_distribution.csv   — max drawdown of every trial
 """
 
 import argparse
-import numpy as np
 import pandas as pd
 
+import core
 
-def get_var_cvar(df: pd.DataFrame, conf_level: float) -> tuple[float, float]:
-    """
-    Computes Value at Risk and Conditional Value at Risk on log returns
-    (ending value vs. starting value) across all trials.
-
-    conf_level=0.95 means a 5% one-sided tail (95% of outcomes are better
-    than VaR); the entire excluded tail sits on the loss side.
-    """
-    first_day = df.iloc[:, 0]
-    last_day = df.iloc[:, -1]
-
-    input_dist = (last_day / first_day) - 1
-    var = np.nanpercentile(input_dist, (1 - conf_level) * 100)
-    cvar = input_dist[input_dist < var].mean()
-
-    return var, cvar
-
-def get_prob_of_loss(df: pd.DataFrame) -> float:
-    """Fraction of trials ending below their starting value."""
-    first_day = df.iloc[:, 0]
-    last_day = df.iloc[:, -1]
-
-    return (last_day < first_day).mean()
-
-def get_mdd(df: pd.DataFrame) -> pd.Series:
-    """
-    Max drawdown per trial: worst peak-to-trough decline along each path,
-    using a running peak (not a fixed global peak or adjacent-period diff).
-    """
-    peak = df.cummax(axis=1)
-    drawdown = (df - peak) / peak
-    max_drawdown = drawdown.min(axis=1)
-
-    return max_drawdown
 
 def get_path_subset(df: pd.DataFrame, n_paths: int, random_state: int) -> pd.DataFrame:
     """
@@ -80,9 +49,8 @@ def get_path_subset(df: pd.DataFrame, n_paths: int, random_state: int) -> pd.Dat
 
     return subset
 
+
 def visualize_results(filepath, conf_level, n_paths, random_state):
-    """
-    """
     df = pd.read_csv(filepath, index_col=0)
 
     # --- Step 1: representative path subset for Power BI fan chart ---
@@ -98,28 +66,27 @@ def visualize_results(filepath, conf_level, n_paths, random_state):
     long_paths.to_csv('data/simulation_paths.csv')
 
     # --- Step 2: summary risk statistics ---
-    var, cvar = get_var_cvar(df, conf_level)
-    prob_of_loss = get_prob_of_loss(df)
-    mdd_per_trial = get_mdd(df)
+    var, cvar = core.get_var_cvar(df, conf_level)
+    mdd_per_trial = core.get_mdd(df)
 
     results = pd.DataFrame({
         'conf_level': [conf_level],
         'VaR': [var],
         'CVaR': [cvar],
-        'prob_of_loss': [prob_of_loss],
+        'prob_of_loss': [core.get_prob_of_loss(df)],
         'MDD_mean': [mdd_per_trial.mean()],
         'MDD_median': [mdd_per_trial.median()],
         'MDD_p5_worst_case': [mdd_per_trial.quantile(0.05)],
     })
 
-
-    #--- Step 3: Export max drawdown distribution (from full dataset) for Power BI ---
-    mdd_per_trial.to_csv('data/mdd_distribution.csv', index_label='simulation_id', header=['max_drawdown'])
+    # --- Step 3: max drawdown distribution (full dataset) for Power BI ---
+    mdd_per_trial.to_csv('data/mdd_distribution.csv', index_label='simulation_id',
+                         header=['max_drawdown'])
 
     return results
 
-if __name__ == '__main__':
-    # --- Parse command-line arguments ---
+
+def main():
     parser = argparse.ArgumentParser(
         description="Compute risk summary statistics and a representative path subset from simulation results."
     )
@@ -150,3 +117,7 @@ if __name__ == '__main__':
 
     results = visualize_results(args.filepath, args.conf_level, args.n_paths, args.random_state)
     results.to_csv('data/simulation_summary.csv', index=False)
+
+
+if __name__ == '__main__':
+    main()
