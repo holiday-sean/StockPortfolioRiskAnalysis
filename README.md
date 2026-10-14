@@ -4,9 +4,7 @@ A Monte Carlo risk simulator for stock and ETF portfolios. Give it your holdings
 
 **[Try the live demo](https://stockportfolioriskanalysis-grdp5rrupy5dhsvgwkz4ea.streamlit.app/)** &nbsp;·&nbsp; enter your own portfolio and see the results in seconds.
 
-<!-- Add a screenshot or GIF of the live app here, e.g.:
 ![Live demo](docs/streamlit_demo.png)
--->
 
 ## Two ways to use it
 
