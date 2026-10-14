@@ -1,94 +1,33 @@
 """
 simulate_portfolio.py
 
-Uses the Monte Carlo algorithim to generate a distribution of the
-potential value of a portfolio for future risk analysis.
+Runs the Monte Carlo simulation to generate a distribution of potential
+portfolio values for risk analysis. The simulation itself lives in
+core.simulate(); this script only handles files and arguments.
 
 Usage:
-    python simulate_portfolio.py 
+    python src/simulate_portfolio.py <cov_matrix_csv> <stats_csv> --weights-path <weights_csv>
+        [--n-simulations 1000] [--n-periods 365] [--starting-value 10000]
 
 Input:
-    The file pathway to the covariance matrix of stocks, saved in the 
-    data folder (e.g. covariance_matrix.csv)
-
-    The file pathway to the aggregate statistcs of stocks, saved in the 
-    data folder (e.g. stats.csv)
-
-    The number of simulations, which determines the size of the distribution
-
-    The period (in days), in other words, how far in time are you looking in
-    for the portfolio 
-
-    Your portfolio starting value (a float number)
-
-    The weights - the proportion of your starting value that is allocated to
-    each stocks. Inputed as a path to weights.csv. 
+    data/covariance_matrix.csv, data/stats.csv, and a weights CSV with
+    columns: tickers, freq_distribution.
 
 Output:
-    data/simulations.csv — a CSV representing the distribution of a portfolio
-    of the following shape (n_simulations, n_period)
-
+    data/simulations.csv — one row per trial, one column per period
+    (column 0 is the starting value).
 """
 
-import numpy as np
-import pandas as pd
 import argparse
-import math
+import pandas as pd
 
-def generate_random_vector(stats_df, rng):
-    vector = np.array([])
+import core
 
-    for i in range(stats_df.shape[0]):
-        d_o_f = stats_df.iloc[i]['degree_of_freedom']
-        el = rng.standard_t(df = d_o_f, size = 1)
-        scaled_el = el / math.sqrt(d_o_f/(d_o_f - 2))
-        vector = np.append(vector, scaled_el)
 
-    antithetic_vector = -vector 
-
-    return vector, antithetic_vector
-
-def run_simulation(cov_matrix, means, stats_df, weights, n_simulations, n_period, starting_portfolio_value):
-    simulations = []
-    lower_triangle_matrix = np.linalg.cholesky(cov_matrix)
-    rng = np.random.default_rng()  # per your earlier fix — one rng, outside the loop
-
-    for i in range(math.ceil(n_simulations / 2)):
-        value = starting_portfolio_value
-        anti_value = starting_portfolio_value
-
-        value_path = [value]
-        anti_value_path = [anti_value]
-
-        for j in range(n_period):
-            z, anti_z = generate_random_vector(stats_df, rng)
-
-            period_asset_returns = (lower_triangle_matrix @ z) + means
-            anti_period_asset_returns = (lower_triangle_matrix @ anti_z) + means
-
-            portfolio_return = weights @ period_asset_returns
-            anti_portfolio_return = weights @ anti_period_asset_returns
-
-            portfolio_return = max(portfolio_return, -1.0)
-            anti_portfolio_return = max(anti_portfolio_return, -1.0)
-
-            value *= (1 + portfolio_return)
-            anti_value *= (1 + anti_portfolio_return)
-
-            value_path.append(value)
-            anti_value_path.append(anti_value)
-
-        simulations.append(value_path)
-        simulations.append(anti_value_path)
-
-    return pd.DataFrame(simulations)
-
-if __name__ == '__main__':
-    # --- Parse command-line arguments ---
+def main():
     parser = argparse.ArgumentParser(
-        description="Inputting the corresponding parameters for the monte carlo algo"
+        description="Run the Monte Carlo portfolio simulation."
     )
-
     parser.add_argument('cov_matrix_path', type=str)
     parser.add_argument('stats_path', type=str)
     parser.add_argument('--n-simulations', type=int, default=1000,
@@ -98,19 +37,25 @@ if __name__ == '__main__':
     parser.add_argument('--starting-value', type=float, default=10000)
     parser.add_argument('--weights-path', type=str, required=True,
                         help='Path to CSV with columns: tickers, freq_distribution')
-
+    parser.add_argument('--seed', type=int, default=None,
+                        help='Random seed for reproducible runs (default: none)')
     args = parser.parse_args()
 
-    cov_matrix = pd.read_csv(args.cov_matrix_path, index_col=0)
-    weights_df = pd.read_csv(args.weights_path, index_col='tickers')
-    weights = weights_df.loc[cov_matrix.index, 'freq_distribution'].values
-    stats_df = pd.read_csv(args.stats_path)
-    means = stats_df['mean_return'].values
-    n_simulations = args.n_simulations
-    n_period = args.n_periods
-    n_assets = pd.read_csv(args.cov_matrix_path, index_col=0).shape[0]
-    starting_portfolio_value = args.starting_value
-    rng = np.random.default_rng()
+    cov = pd.read_csv(args.cov_matrix_path, index_col=0)
+    stats = pd.read_csv(args.stats_path, index_col=0)
+    weights = pd.read_csv(args.weights_path, index_col='tickers')['freq_distribution']
 
-    results = run_simulation(cov_matrix, means, stats_df, weights, n_simulations, n_period, starting_portfolio_value)
-    results.to_csv('data/simulations.csv')
+    # align everything to the covariance matrix's ticker order
+    paths = core.simulate(
+        cov.values,
+        stats.loc[cov.index, 'mean_return'].values,
+        stats.loc[cov.index, 'degree_of_freedom'].values,
+        weights.loc[cov.index].values,
+        args.n_simulations, args.n_periods, args.starting_value,
+        seed=args.seed,
+    )
+    paths.to_csv('data/simulations.csv')
+
+
+if __name__ == '__main__':
+    main()
