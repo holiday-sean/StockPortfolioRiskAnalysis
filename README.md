@@ -1,9 +1,28 @@
 # Portfolio Risk Analysis
 
+A Monte Carlo risk simulator for stock and ETF portfolios. Give it your holdings and it simulates thousands of possible futures from real price history, then reports how bad things could get: value at risk (VaR), conditional VaR (CVaR), probability of loss, and maximum drawdown.
+
+**[Try the live demo](https://stockportfolioriskanalysis-grdp5rrupy5dhsvgwkz4ea.streamlit.app/)** &nbsp;·&nbsp; enter your own portfolio and see the results in seconds.
+
+<!-- Add a screenshot or GIF of the live app here, e.g.:
+![Live demo](docs/streamlit_demo.png)
+-->
+
+## Two ways to use it
+
+| | Live demo (Streamlit) | Batch pipeline (Power BI) |
+|---|---|---|
+| **Best for** | Trying your own portfolio instantly | Comparing portfolios and building a polished dashboard |
+| **Input** | Tickers and percentage weights in the browser | `tickers.csv` with share counts |
+| **Output** | Interactive charts and KPIs | CSVs in `data/` feeding a Power BI dashboard |
+| **Runs** | Hosted, or locally with `streamlit run app.py` | Locally via Makefile or Docker |
+
+Both run the **same simulation code** (`src/core.py`), so they always agree. See [Architecture](#architecture).
+
 ## Introduction
 
 ### Problem I
-Despite the continuous technological advances that have been made in conjunction with the finance industry, <b>there is no model</b> that has accurately captured the dynamic and unpredictable movements of the stock market. The features in order to predict the market are too multi-modal and complex in nature to capture and process. Furthermore, the trajectory of the market depends on future events that are unforseable. There is no definitive model, and there will probably never be one.
+Despite the continuous technological advances that have been made in conjunction with the finance industry, <b>there is no model</b> that has accurately captured the dynamic and unpredictable movements of the stock market. The features in order to predict the market are too multi-modal and complex in nature to capture and process. Furthermore, the trajectory of the market depends on future events that are unforeseeable. There is no definitive model, and there will probably never be one.
 
 To the average investor that is interested in saving long-term, if there is no perfect model, how can one safely grow their portfolio? One way to approach this issue is to <b> account for risk.</b> If an investor can quantify risk, he/she/they can optimize their portfolio that withstand loss. But how do we even quantify risk in the first place? 
 
@@ -12,14 +31,14 @@ One popular solution, to quantify risk as an objective metric, is to see all the
 
 The [Monte Carlo Algorithm](https://en.wikipedia.org/wiki/Monte_Carlo_method) is a mathematical technique that entails utilizing random sampling to estimate the potential outcomes of an uncertain system (in this case, our portfolio value after fluctuations in the stock market).
 
-How do we apply this technique to our portfolio? We randomly sample the movements (events) in the stock market and combine it with out portfolio value. This process requires:
+How do we apply this technique to our portfolio? We randomly sample the movements (events) in the stock market and combine it with our portfolio value. This process requires:
 - Compiling share prices over a period of `N` days
 - Calculating the variance, mean returns, and the degrees of freedom of each share
 - Computing a covariance matrix that captures the relationship between different shares in one portfolio
   - E.g. if NVDA's share price decreases, how will AMZN's share price behave?
 - Using linear algebra (matrix multiplication) to simulate how one's portfolio turns out everyday until `N` days is reached
 - Do the previous step again many times (e.g. 1000 times) to create a distribution of potential portfolio earnings like a normal distribution or student's t-distribution
-- Present the portfolio distribution along with key risk indicators captured such as value at risk (VaR), conditional value at risk (CVaR), and maximum dropdown (MDD) in a dashboard for an investor to decide whether the risk associated with their portfolio is acceptable.
+- Present the portfolio distribution along with key risk indicators captured such as value at risk (VaR), conditional value at risk (CVaR), and maximum drawdown (MDD) in a dashboard for an investor to decide whether the risk associated with their portfolio is acceptable.
 
 Presenting these metrics in a dashboard gives an investor an objective basis for deciding whether a portfolio's risk profile fits their tolerance:
 
@@ -59,19 +78,72 @@ To answer this, the pipeline was run against three portfolios, each starting at 
 - **Risk-tolerant investors** are reasonably compensated for Tech-Concentrated's volatility — its return-per-unit-of-risk is on par with Conservative's.
 - **All-Weather** is the hardest to recommend from this simulation alone; evaluating its case fairly would need a longer backtest or forward-looking regime analysis.
 
-## Pipeline Architecture
-`Data (yfinance) → Python (Monte Carlo + Cholesky) → Risk Metrics → Power BI Dashboard`
+## Architecture
+
+```
+                     yfinance (daily prices)
+                              │
+                              ▼
+                    src/core.py  (shared engine)
+        log returns → mean / variance / Student's-t d.o.f. → covariance
+        → correlated t-distributed simulation (Cholesky, antithetic pairs)
+        → VaR, CVaR, probability of loss, max drawdown, risk contribution
+                 │                                  │
+                 ▼                                  ▼
+   CLI scripts + Makefile → data/*.csv      app.py (Streamlit)
+                 │                                  │
+                 ▼                                  ▼
+        Power BI dashboard                    Live interactive demo
+```
+
+All numerical work lives in `src/core.py` as in-memory functions that never read or write files. The CLI scripts are thin wrappers that add file input/output around those functions, and `app.py` adds a web interface around the same functions. Fixing or improving the model in one place updates both.
+
+The simulation is vectorized with NumPy: shocks are drawn for many trials at once, collapsed straight to one portfolio return per period (the portfolio return is linear in the shocks), and accumulated with a cumulative sum of log returns. Trials are generated in chunks to keep memory use flat. This runs 10,000 trials over 365 days in about a second or less for a typical portfolio.
+
+## Live Demo
+
+The Streamlit app (`app.py`) lets anyone enter a portfolio and see the results without installing anything.
+
+**Inputs:** tickers and percentage weights (rescaled to 100%), starting value, horizon (up to 3 years), number of simulations, confidence level, and price-history length.
+
+**Outputs:**
+- Headline metrics: median ending value, chance of a loss, VaR, CVaR, median and bad-case drawdown
+- Fan chart of the range of portfolio values over time
+- Histograms of ending value and maximum drawdown
+- Risk contribution by holding, and a correlation heatmap
+- Per-holding historical return, volatility, and tail heaviness, plus a CSV download of the summary
+
+**Limits** (to keep a free public host responsive): up to 10 tickers, up to 5,000 simulations, up to a 3-year horizon, and at least 250 days of overlapping price history. Price lookups are cached for an hour. Invalid inputs (unknown or duplicate tickers, zero weights, very recent listings) show a readable error instead of failing.
+
+The hosted app may take a moment to wake if nobody has visited recently.
 
 ## Running the Project
 
-If you want to collect risk metrics for your own portfolio, clone the repo:
+Pick whichever path fits what you want to do.
+
+### Option 1: Live demo
+
+Use the [hosted app](https://YOUR-APP-NAME.streamlit.app). Nothing to install.
+
+### Option 2: Run the app locally
+
+Requires Python 3.12.
 
 ```bash
 git clone https://github.com/holiday-sean/StockPortfolioRiskAnalysis.git
 cd StockPortfolioRiskAnalysis
+
+python -m venv .venv
+# macOS / Linux:  source .venv/bin/activate
+# Windows:        .venv\Scripts\activate
+pip install -r requirements.txt
+
+streamlit run app.py
 ```
 
-Then add your portfolio as `tickers.csv` in the repo root, with two columns — ticker symbol and number of shares you hold:
+### Option 3: Batch pipeline for your own portfolio (Power BI workflow)
+
+Add your portfolio as `tickers.csv` in the repo root, with two columns: ticker symbol and number of shares you hold:
 
 ```csv
 tickers,num_shares
@@ -79,66 +151,69 @@ AAPL,10
 NVDA,5
 ```
 
-### Docker (Recommended)
+The pipeline converts share counts into weights (each ticker's share of the total number of shares held), so these are share-count fractions, not dollar weights. To target specific percentages, choose share counts that produce them.
 
-Docker is the recommended path, especially on Windows, since `make` isn't natively available there — the Dockerfile installs it inside the container instead.
+#### With Docker (recommended, especially on Windows)
 
-1. **Build and run the pipeline:**
+Docker is the easiest path on Windows, since `make` isn't natively available there. The Dockerfile installs it inside the container.
+
+1. **Run the pipeline:**
    ```bash
-   docker-compose up
+   docker-compose up --build portfolio_risk_analysis
    ```
-   This builds the image (if needed) and runs the full pipeline (`make all`) inside the container. Outputs are written to `data/` in your local repo — the `docker-compose.yml` volume mapping means you'll see the CSVs on your host machine, not just inside the container. (If this step doesn't work, try creating an empty `data/` folder first and re-running.)
+   This builds the image and runs the full pipeline (`make all`) inside the container. Outputs are written to `data/` in your local repo (the `docker-compose.yml` volume mapping means you'll see the CSVs on your host machine, not just inside the container). If this step doesn't work, try creating an empty `data/` folder first and re-running.
 
-2. **Shut down the container:**
+2. **Run the web app in Docker instead** (optional):
+   ```bash
+   docker-compose up --build app
+   ```
+   Then open <http://localhost:8501>.
+
+3. **Shut down:**
    ```bash
    docker-compose down
    ```
    This closes the Docker environment but keeps your generated data files intact.
 
-3. **Re-run after changing your portfolio or starting value:**
-   ```bash
-   docker-compose up --build
-   ```
-   Any change to `tickers.csv` or the pipeline scripts requires a rebuild, since the code is copied into the image at build time rather than mounted live.
+4. **Re-run after changing your portfolio or the code:** use `--build` again, since the code is copied into the image at build time rather than mounted live.
 
-4. **Start fresh:**
-   On Windows (no native `make`), the equivalent of `make clean` is manually deleting everything inside `data/`, then re-running `docker-compose up --build`.
+5. **Start fresh:** delete everything inside `data/`, then re-run with `--build`.
 
-### Conda & Makefile (Linux/macOS)
+#### With make (Linux / macOS)
 
-If you're on Linux or macOS and already have `make` installed, you can skip Docker entirely:
+If you already have GNU Make (version 4.3 or newer, because the Makefile uses grouped targets), you can skip Docker:
 
-1. **Create and activate the environment:**
-   ```bash
-   conda env create -f environment.yml
-   conda activate portfolio-analysis
-   ```
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+make all        # run the pipeline
+make clean      # delete generated CSVs, then `make all` to start fresh
+```
 
-2. **Run the pipeline:**
-   ```bash
-   make all
-   ```
+On Windows, Make versions older than 4.3 can't read the Makefile; use Docker, or run the scripts in `src/` one at a time in the order shown in [Pipeline flow](#pipeline-flow).
 
-3. **Start fresh:**
-   ```bash
-   make clean
-   make all
-   ```
+### Viewing your results in Power BI
 
-### Viewing your results
+Once the pipeline finishes, `data/` contains the simulation outputs (paths, summary risk statistics, convergence sweep, and so on; see [Project Structure](#project-structure)). Open `dashboard.pbit` in Power BI Desktop and, when prompted, set the `DataFolder` parameter to the absolute path of your local `data/` folder so the dashboard points at your own results with no code changes.
 
-Once the pipeline finishes, `data/` will contain the simulation outputs (paths, summary risk stats, convergence sweep, etc. — see [Project Structure](#project-structure) below). Open the Power BI `.pbix` dashboard in Power BI Desktop; on first open, set the `DataFolder` parameter to the absolute path of your local `data/` folder so the dashboard points at your own results rather than needing any code changes.
+The Power BI dashboard can't be published online, which is why the live demo is a separate Streamlit app. The screenshot in the [Introduction](#introduction) shows the dashboard.
 
 ## Project Structure
 
 ```
 .
-├── Dockerfile                 # Pipeline environment: Python 3.12-slim + make + pinned deps
-├── docker-compose.yml         # Maps local data/ into the container; runs `make all` on `up`
+├── app.py                     # Streamlit web app (live demo): inputs, validation, charts
+├── requirements.txt           # Pinned dependencies (used by Docker, Streamlit hosting, local installs)
+├── Dockerfile                 # Python 3.12-slim + make + pinned deps
+├── docker-compose.yml         # Two services: the batch pipeline, and the web app on port 8501
 ├── Makefile                   # Orchestrates pipeline stages and their file dependencies
-├── environment.yml            # Pinned conda dependencies for a non-Docker local run
-├── tickers.csv                # Your input: ticker symbols + number of shares held
+├── tickers.csv                # Batch pipeline input: ticker symbols + number of shares held
+├── dashboard.pbit             # Power BI template: fan chart, MDD histogram,
+│                              #   correlation heatmap, VaR/CVaR/MDD summary cards
+├── docs/                      # README images
 ├── src/
+│   ├── core.py                   # Shared engine: returns, statistics, simulation, risk metrics
+│   │                              #   (in-memory functions, no file I/O; used by app.py and the scripts below)
 │   ├── fetch_portfolio_dist.py   # tickers.csv → data/weights.csv (per-ticker portfolio weight)
 │   ├── fetch_prices.py           # tickers.csv → data/prices.csv (5y daily Close, via yfinance)
 │   ├── compute_returns.py        # data/prices.csv → data/returns.csv (daily log returns)
@@ -154,12 +229,12 @@ Once the pipeline finishes, `data/` will contain the simulation outputs (paths, 
 │   │                              #   (checks whether risk metrics have stabilized)
 │   └── compute_risk.py           # covariance_matrix.csv + weights.csv → data/risk_contribution.csv
 │                                  #   (variance-based risk decomposition per asset)
-├── data/                      # Pipeline outputs — gitignored, regenerated on every run
-└── <dashboard>.pbix           # Power BI dashboard: fan chart, MDD histogram,
-                                #   covariance heatmap, VaR/CVaR/MDD summary cards
+└── data/                      # Pipeline outputs: gitignored, regenerated on every run
 ```
 
 ## Pipeline flow
+
+This is the batch pipeline (the Makefile path). The live app runs the same steps in memory instead of through CSV files.
 
 ```
 tickers.csv
@@ -191,26 +266,41 @@ tickers.csv
 
 ## Dependencies
 
-Pipeline dependencies are pinned in `environment.yml`:
+All dependencies are pinned in `requirements.txt`, which is the single source used by Docker, the hosted app, and local installs:
 
 | Package | Version | Purpose |
 |---|---|---|
-| `numpy` | 2.5.1 | Linear algebra (Cholesky decomposition), random number generation |
+| `numpy` | 2.5.1 | Linear algebra (Cholesky decomposition), vectorized random number generation |
 | `pandas` | 3.0.5 | Data wrangling, CSV I/O |
 | `yfinance` | 1.5.2 | Historical price data from Yahoo Finance |
 | `scipy` | 1.18.0 | Student's t-distribution fitting (`scipy.stats.t.fit`) |
+| `streamlit` | 1.65.0 | Web app framework for the live demo |
+| `plotly` | 7.1.0 | Interactive charts in the live demo |
 
-Install locally with conda:
+Install locally with:
 
 ```bash
-conda env create -f environment.yml
-conda activate portfolio-analysis
+pip install -r requirements.txt
 ```
 
-If you're using Docker, you don't need to do this — the image installs the same pinned versions via `pip` automatically.
+If you're using Docker, you don't need to do this: the image installs the same pinned versions automatically.
 
-**Power BI dashboard:** the correlation heatmap (derived from the covariance matrix) is rendered as a Python visual inside Power BI Desktop, which relies on Power BI's own separately-configured Python environment (Power BI Options → Python scripting), not the conda environment above. That environment needs `pandas`, `numpy`, `matplotlib`, and `seaborn` available.
+**Power BI dashboard:** the correlation heatmap (derived from the covariance matrix) is rendered as a Python visual inside Power BI Desktop, which relies on Power BI's own separately-configured Python environment (Power BI Options → Python scripting), not the environment above. That environment needs `pandas`, `numpy`, `matplotlib`, and `seaborn` available.
 
 **Orchestration:**
-- `make` — installed via `apt-get` inside the Docker image; not required on the host if you're using Docker Compose
-- Docker / Docker Compose — to build and run the pipeline environment without setting up conda locally
+- `make`: installed via `apt-get` inside the Docker image; not required on the host if you're using Docker Compose
+- Docker / Docker Compose: to build and run the pipeline or the web app without setting up Python locally
+
+## Method notes and limitations
+
+- **Historical assumptions.** The simulation assumes the average return and volatility seen in the price-history window continue. It answers "what if the next year looks like the last five?", not "what will happen?". Results lean heavily on whatever regime the window contains (for example, the 2022 rate hikes for long-duration bonds), as discussed in the comparative analysis above.
+- **Distribution.** Daily returns are drawn from a Student's t distribution (fat tails) with each asset's fitted degrees of freedom, rescaled to unit variance, and correlated through the Cholesky factor of the covariance matrix. This is a common approximation, not a full multivariate t model.
+- **Compounding.** Returns are log returns, so portfolio values compound as `exp(r)`.
+- **Weights.** The live app takes percentage weights directly. The batch pipeline derives weights from share counts (see [Option 3](#option-3-batch-pipeline-for-your-own-portfolio-power-bi-workflow)).
+- **Simplifications.** No rebalancing, trading costs, taxes, dividends beyond adjusted prices, or contributions. Prices are assumed to be in USD.
+
+### Future work
+
+- GARCH-based volatility and rolling correlations instead of a single fixed covariance matrix
+- Automated tests (pytest) for `core.py`
+- Longer or regime-specific backtest windows, for example to evaluate the All-Weather portfolio over a full rate cycle
